@@ -101,6 +101,14 @@ export default class BingServer implements Party.Server {
           this.state.players[sender.id].isHost = true;
         }
 
+        // Trimite clientului propriul ID asignat de server
+        sender.send(
+          JSON.stringify({
+            type: "your-id",
+            payload: { id: sender.id },
+          })
+        );
+
         // Broadcast lobby update tuturor
         this._broadcastLobby();
         break;
