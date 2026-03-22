@@ -46,6 +46,8 @@ export default class BingServer implements Party.Server {
 
   // ── Conexiune nouă ──────────────────────────────────────────────────────────
   onConnect(conn: Party.Connection) {
+    // Trimite imediat ID-ul real al conexiunii (clientul are nevoie de el)
+    conn.send(JSON.stringify({ type: "your-id", payload: { id: conn.id } }));
     // Trimite starea curentă noului jucător
     conn.send(
       JSON.stringify({
@@ -95,19 +97,16 @@ export default class BingServer implements Party.Server {
           result: null,
         };
 
-        // Primul jucător e host
-        if (isHost || !this.state.hostId) {
+        // Dacă nu există host sau jucătorul revendicat isHost, setează-l
+        if (isHost && !this.state.hostId) {
+          this.state.hostId = sender.id;
+          this.state.players[sender.id].isHost = true;
+        } else if (!this.state.hostId) {
+          // Dacă hostul anterior s-a deconectat și un guest se reconectează, nu îl promovăm automat
+          // (host-disconnect a fost deja trimis, camera e în reset)
           this.state.hostId = sender.id;
           this.state.players[sender.id].isHost = true;
         }
-
-        // Trimite clientului propriul ID asignat de server
-        sender.send(
-          JSON.stringify({
-            type: "your-id",
-            payload: { id: sender.id },
-          })
-        );
 
         // Broadcast lobby update tuturor
         this._broadcastLobby();
@@ -157,17 +156,20 @@ export default class BingServer implements Party.Server {
     delete this.state.players[conn.id];
 
     if (wasHost) {
-      // Hostul a plecat — anunță toți și închide camera
+      // Hostul a plecat — anunță toți și resetează camera
       this.room.broadcast(
         JSON.stringify({ type: "host-disconnect" })
       );
       this.state.hostId = null;
       this.state.players = {};
+      this.state.seed = 0;
       this.state.started = false;
-    } else {
-      // Guest normal a plecat — actualizează lobby
+    } else if (!this.state.started) {
+      // Guest a plecat din lobby — actualizează lobby
       this._broadcastLobby();
     }
+    // Dacă jocul e în desfășurare și un guest se deconectează, nu facem nimic
+    // (jocul continuă independent pentru fiecare jucător rămas)
   }
 
   // ── Helper: broadcast lobby ─────────────────────────────────────────────────
